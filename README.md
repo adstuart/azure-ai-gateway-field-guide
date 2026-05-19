@@ -2,34 +2,71 @@
 
 Last reviewed: May 2026
 
-Use this guide to decide where a web application firewall (WAF), Azure API Management (APIM) AI gateway, Microsoft Foundry model router, Model Context Protocol (MCP) governance, and Open Worldwide Application Security Project (OWASP) controls fit.
+Use this guide to choose the right control point for AI traffic on Azure. A web application firewall (WAF), Azure API Management (APIM) AI gateway, Microsoft Foundry model router, Model Context Protocol (MCP) gateway, and Open Worldwide Application Security Project (OWASP) controls solve different problems.
 
 This guide isn't official Microsoft documentation. Check current Microsoft Learn pages for feature status, regions, tiers, limits, and pricing.
 
-## Architecture
+## Start with the layers
 
 ```mermaid
 flowchart LR
-  App[Apps and agents] --> WAF[WAF<br/>public edge]
-  WAF --> APIM[APIM AI gateway<br/>policy control point]
-  APIM --> Foundry[Microsoft Foundry]
+  App[Apps and agents] --> Edge[WAF<br/>public HTTP edge]
+  Edge --> Gateway[APIM AI gateway<br/>policy and traffic control]
+  Gateway --> Foundry[Microsoft Foundry]
   Foundry --> Router[Model router<br/>prompt-aware model choice]
   Foundry --> Direct[Direct model deployment]
-  APIM --> MCP[MCP servers and tools]
-  APIM --> Other[Other model APIs]
+  Gateway --> Tools[MCP servers<br/>and tool APIs]
+  Gateway --> Other[Other model APIs]
 ```
 
-## Key points
+The architecture is layered on purpose. Use each layer for the control it is good at, and don't expect one layer to cover the others.
 
-- **WAF protects the HTTP edge.** Use it for public endpoints, distributed denial-of-service (DDoS) protection, bots, and classic web attacks. It isn't complete AI security.
-- **APIM AI gateway governs AI traffic.** Use it for identity, authorization, token limits, content safety, semantic cache, backend routing, failover, logging, and MCP tool policy.
-- **Model router isn't a gateway.** It chooses an eligible underlying model for each prompt in Microsoft Foundry. It optimizes model choice. It doesn't replace APIM.
-- **MCP tools are APIs.** Register them, authenticate callers, validate schemas, set quotas, log calls, pin versions, and require approval for high-impact actions.
-- **OWASP controls need layers.** Map prompt and agent risks across Microsoft Entra ID, APIM, Prompt Shields, Purview, Foundry evaluations and tracing, Defender, and human approval.
+| Layer | Use it for | Don't use it for |
+|---|---|---|
+| WAF | Public HTTP protection, distributed denial-of-service (DDoS) protection, bot controls, classic web attacks | Prompt intent, model output quality, tool safety, or agent behavior |
+| APIM AI gateway | Identity, authorization, token budgets, content safety, backend routing, logging, resilience, MCP policy | Replacing application authorization, data governance, or model evaluation |
+| Foundry model router | Choosing an eligible model for each prompt inside Microsoft Foundry | Enterprise gateway governance, cross-provider policy, or tool governance |
+| MCP gateway and registry | Governing which tools agents can discover and call | Trusting tool calls just because an agent requested them |
 
-## Agentic risk map
+## Use APIM as the AI traffic control point
 
-Use the newer consolidated OWASP map: large language model (LLM) risks become broader agentic system risks when agents plan, call tools, keep memory, and talk to other agents.
+APIM AI gateway is Azure API Management applied to AI traffic. It is the place to apply consistent policy before requests reach models, agents, or tools.
+
+| Capability | What APIM exposes | Why it matters |
+|---|---|---|
+| Endpoint onboarding | Foundry, Azure OpenAI, Azure AI Model Inference, OpenAI-compatible endpoints, MCP servers, and agent-to-agent APIs | Brings AI endpoints into the same gateway and developer access model as other APIs |
+| Backend access | Managed identity, credential manager, and backend credentials | Keeps model keys out of application code |
+| Token control | Token-limit policies, token prechecks, and token metrics | Controls spend, prevents token spikes, and supports showback |
+| Safety checks | Content safety policies with Prompt Shields and category thresholds | Screens prompts and responses at the gateway |
+| Performance | Semantic cache policies and backend pools | Reduces repeat model calls and spreads traffic across healthy backends |
+| Resilience | Retry, load-balancing, and circuit-breaker policies | Reduces the effect of throttled or unhealthy model deployments |
+| Tool governance | REST-to-MCP export, pass-through MCP governance, rate limits, quotas, and validation | Protects tools used by agents, not only model endpoints |
+| Foundry integration | Foundry portal integration, where available, to associate an APIM-backed AI gateway | Lets teams work from Foundry while keeping APIM as the gateway |
+
+The short version: use APIM when you need shared policy. Use model router when you need prompt-aware model choice. Use both when you need governed traffic and smart model selection.
+
+## Keep model routing separate from gateway routing
+
+Model router is a Foundry model deployment. It chooses an eligible underlying model for each prompt based on routing mode, model subset, quality, cost, latency, and availability.
+
+APIM routes traffic. It decides which approved backend, region, provider, API, or MCP server a caller can reach. It also enforces identity, quotas, safety policies, logging, and resilience controls.
+
+| Scenario | Pattern |
+|---|---|
+| Need one approved model | APIM to direct model deployment |
+| Need prompt-aware model choice | Foundry model router |
+| Need governance and prompt-aware model choice | APIM AI gateway to model router |
+| Need multi-provider or cross-region policy | APIM AI gateway |
+
+## Keep the WAF, but don't stop there
+
+If an AI endpoint is public, keep a WAF in front of it. It helps with the web edge: DDoS protection, bots, request floods, known exploit patterns, request size limits, and protocol hygiene.
+
+A WAF can't understand prompt injection, tool misuse, memory poisoning, model output leakage, or runaway agent behavior. Those risks need AI-aware controls at the gateway, identity, data, model, and operations layers.
+
+## Map agentic risks to layered controls
+
+The following map uses the later consolidated OWASP Agentic AI mapping from the mitigation work. It supersedes the earlier reference draft and shows why AI security can't be reduced to a WAF rule set.
 
 ```mermaid
 graph LR
@@ -113,61 +150,31 @@ graph LR
     class M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11 msBlue
 ```
 
-Red nodes are new agentic attack surfaces with no clean LLM equivalent. Blue nodes are Microsoft mitigation areas.
+Red nodes are new agentic attack surfaces with no clean large language model (LLM) equivalent. Blue nodes are Microsoft mitigation areas.
 
-## Agentic threats and WAF coverage
-
-| Agentic risk | Primary controls | Where a regular WAF helps |
+| Agentic risk | WAF role | Main controls |
 |---|---|---|
-| ASI01: Agent goal hijack | Prompt Shields, Foundry safety evaluators, Defender for Cloud | Partial. It may block obvious malicious request patterns, but it can't understand goal hijack. |
-| ASI02: Tool misuse | APIM request validation, Azure API Center, Purview data loss prevention (DLP) | Partial. It can protect public tool endpoints from classic web attacks, not unsafe tool intent. |
-| ASI03: Identity and privilege abuse | Microsoft Entra ID, workload identity, Conditional Access, Defender | Low. Use identity controls; WAF doesn't govern tokens or permissions. |
-| ASI04: Agentic supply chain | GitHub Advanced Security, API Center registry, signed artifacts, APIM as MCP gateway | Low. It can protect public plugin endpoints, not package or tool provenance. |
-| ASI05: Unexpected code execution | Sandboxed execution, output validation, egress controls, Defender | Low. Use runtime isolation; WAF rules aren't enough for generated code paths. |
-| ASI06: Memory and context poisoning | Purview, retrieval access control, groundedness checks, Foundry evaluations | Partial. It can help if ingestion is a public HTTP endpoint, but it can't judge semantic poisoning. |
-| ASI07: Insecure inter-agent communication | Microsoft Entra ID, APIM mutual TLS, token validation, private endpoints | Low. Use authenticated channels; WAF isn't a trust model for agent-to-agent calls. |
-| ASI08: Cascading failures | APIM quotas, circuit breakers, Foundry tracing, Azure Monitor | Partial. Request-rate rules help at the edge; token and tool budgets catch AI loops. |
-| ASI09: Human-agent trust exploitation | Purview Audit, citations, Foundry evaluations, human approval | Low. This is a workflow and trust problem, not a web-edge problem. |
-| ASI10: Rogue agents | Defender, Microsoft Entra lifecycle controls, APIM quotas, emergency stop | Partial. It can throttle public calls, but it can't contain agent autonomy. |
+| Agent goal hijack | Partial edge filter | Prompt Shields, Foundry safety evaluators, Defender for Cloud |
+| Tool misuse | Protects public tool endpoints only | APIM request validation, Azure API Center, Microsoft Purview data loss prevention |
+| Identity and privilege abuse | Not the control point | Microsoft Entra ID, workload identity, Conditional Access, Defender |
+| Agentic supply chain | Protects public plugin endpoints only | GitHub Advanced Security, API Center registry, signed artifacts, APIM as MCP gateway |
+| Unexpected code execution | Not enough | Sandboxed execution, output validation, egress controls, Defender |
+| Memory and context poisoning | Helps only if ingestion is a public HTTP path | Purview, retrieval access control, groundedness checks, Foundry evaluations |
+| Insecure inter-agent communication | Not a trust model | Microsoft Entra ID, APIM mutual TLS, token validation, private endpoints |
+| Cascading failures | Helps with request-rate controls | APIM quotas, circuit breakers, Foundry tracing, Azure Monitor |
+| Human-agent trust exploitation | Not applicable | Audit trails, citations, Foundry evaluations, human approval |
+| Rogue agents | Helps throttle public calls | Defender, Microsoft Entra lifecycle controls, APIM quotas, emergency stop |
 
-## What APIM AI gateway adds
+## Minimum design checklist
 
-| Capability | What APIM exposes | Value |
-|---|---|---|
-| AI endpoint onboarding | Import and manage Foundry, Azure OpenAI, Azure AI Model Inference, OpenAI-compatible endpoints, MCP servers, and agent-to-agent APIs | Brings AI endpoints into the same gateway, policy, catalog, and developer access model as other APIs |
-| Managed identity and credentialed access | Managed identity authentication, credential manager, and backend credentials | Centralizes backend access and keeps application code away from model keys |
-| Token limits and quotas | `llm-token-limit` and `azure-openai-token-limit` policies | Controls spend, prevents token spikes, and allocates model capacity fairly |
-| Prompt-token prechecks | Token policies with prompt-token estimation | Rejects oversized prompts before a model call |
-| Token metrics and showback | `llm-emit-token-metric` and `azure-openai-emit-token-metric` policies | Sends prompt, completion, and total-token metrics to Application Insights and Azure Monitor |
-| Prompt and response safety | `llm-content-safety` with prompt shielding and category thresholds | Adds gateway-level screening before or after model execution |
-| Semantic caching | `llm-semantic-cache-lookup/store` and `azure-openai-semantic-cache-lookup/store` policies | Reuses similar responses to reduce latency and model cost |
-| Model and backend governance | APIM backends, backend pools, routing policies, and allowlist logic | Controls which models, deployments, providers, or regions are used |
-| Load balancing and resilience | Load-balanced backend pools, retries, and circuit breaker | Reduces the effect of throttled or unhealthy backends |
-| Per-user, per-agent, or per-tool rate limiting | `rate-limit-by-key`, `quota-by-key`, and related APIM policies | Protects model, agent, and tool paths from loops and noisy tenants |
-| MCP and tool governance | REST-to-MCP export, pass-through MCP governance, and standard APIM policy controls | Protects and governs tools used by agents, not only model endpoints |
-| Foundry-integrated gateway experience | Foundry portal integration, where available, to create or associate an APIM-backed AI gateway | Lets teams govern Foundry models, agents, and tools from a Foundry workflow while retaining APIM as the gateway |
-
-## Decision table
-
-| Need | Use | Limit |
-|---|---|---|
-| Public AI endpoint | WAF and DDoS protection | WAF can't understand prompts, model outputs, or tool intent. |
-| Shared AI control point | APIM AI gateway | Gateway policy doesn't replace app authorization or data governance. |
-| Prompt-aware model choice | Foundry model router | Model router doesn't provide enterprise gateway governance. |
-| Govern agent tools | APIM as MCP gateway + Azure API Center | Tool discovery without policy invites tool poisoning and misuse. |
-| Stop runaway cost | APIM token limits and budget alerts | Request-rate limits miss high-token prompts and agent loops. |
-| Regulated or fixed-model workload | APIM to direct deployment | Model router may select a different eligible model. |
-
-## Minimum production checklist
-
-- Use Microsoft Entra ID or managed identity where possible.
-- Keep model keys out of application code.
-- Enforce token quotas by app, team, user, or agent.
-- Apply Prompt Shields or equivalent checks for direct and indirect prompt injection.
-- Validate model output before downstream systems execute or render it.
-- Treat MCP tools as production APIs with schema validation and audit logs.
-- Trace user, agent, model, tool, and outcome with correlation IDs.
-- Add an emergency stop for runaway agents or compromised tools.
+- Which layer enforces identity and authorization?
+- Which layer enforces token budgets?
+- Which layer screens prompts and responses?
+- Which tools can agents discover and call?
+- Which actions need human approval?
+- Which logs connect user, agent, model, tool, and outcome?
+- Which control stops runaway agents or compromised tools?
+- Which workloads must use a fixed model instead of model router?
 
 ## References
 
