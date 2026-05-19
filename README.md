@@ -2,11 +2,11 @@
 
 Last reviewed: May 2026
 
-One-page field guide for where WAF, Azure API Management (APIM) AI gateway, Microsoft Foundry model router, MCP governance, and OWASP controls fit.
+Use this one-page guide to decide where a web application firewall (WAF), Azure API Management (APIM) AI gateway, Microsoft Foundry model router, Model Context Protocol (MCP) governance, and OWASP controls fit.
 
-This is practitioner guidance, not official Microsoft documentation. Check current Microsoft Learn pages for feature status, regions, tiers, limits, and pricing.
+This guide isn't official Microsoft documentation. Check current Microsoft Learn pages for feature status, regions, tiers, limits, and pricing.
 
-## The whole model
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -21,19 +21,19 @@ flowchart LR
 
 ## Key points
 
-- **WAF protects the HTTP edge.** Keep it for public endpoints, DDoS, bots, and classic web attacks. Do not treat it as complete AI security.
-- **APIM AI gateway governs AI traffic.** Use it for identity, authorization, token limits, content safety, semantic cache, backend routing, failover, logging, and MCP/tool policy.
-- **Model router is not a gateway.** It is a Foundry model deployment that chooses an eligible underlying model per prompt. It optimizes model choice; it does not replace APIM.
+- **WAF protects the HTTP edge.** Use it for public endpoints, DDoS, bots, and classic web attacks. It isn't complete AI security.
+- **APIM AI gateway governs AI traffic.** Use it for identity, authorization, token limits, content safety, semantic cache, backend routing, failover, logging, and MCP tool policy.
+- **Model router isn't a gateway.** It chooses an eligible underlying model for each prompt in Microsoft Foundry. It optimizes model choice. It doesn't replace APIM.
 - **MCP tools are APIs.** Register them, authenticate callers, validate schemas, set quotas, log calls, pin versions, and require approval for high-impact actions.
-- **OWASP controls need layers.** Prompt and agent risks map across Microsoft Entra ID, APIM, Prompt Shields, Purview, Foundry evaluations/tracing, Defender, and human approval.
+- **OWASP controls need layers.** Map prompt and agent risks across Microsoft Entra ID, APIM, Prompt Shields, Purview, Foundry evaluations and tracing, Defender, and human approval.
 
 ## Decision table
 
-| Need | Use | Not enough on its own |
+| Need | Use | Limit |
 |---|---|---|
-| Public AI endpoint | WAF + DDoS | WAF cannot understand prompts, model outputs, or tool intent. |
-| Shared AI control point | APIM AI gateway | Gateway policy does not replace app authorization or data governance. |
-| Prompt-aware model choice | Foundry model router | Model router does not provide enterprise gateway governance. |
+| Public AI endpoint | WAF and DDoS protection | WAF can't understand prompts, model outputs, or tool intent. |
+| Shared AI control point | APIM AI gateway | Gateway policy doesn't replace app authorization or data governance. |
+| Prompt-aware model choice | Foundry model router | Model router doesn't provide enterprise gateway governance. |
 | Govern agent tools | APIM as MCP gateway + API Center | Tool discovery without policy invites tool poisoning and misuse. |
 | Stop runaway cost | APIM token limits + budget alerts | Request-rate limits miss high-token prompts and agent loops. |
 | Regulated or fixed-model workload | APIM to direct deployment | Model router may select a different eligible model. |
@@ -41,13 +41,13 @@ flowchart LR
 ## Minimum production checklist
 
 - Use Microsoft Entra ID or managed identity where possible.
-- Keep raw model keys out of application code.
+- Keep model keys out of application code.
 - Enforce token quotas by app, team, user, or agent.
 - Apply Prompt Shields or equivalent checks for direct and indirect prompt injection.
 - Validate model output before downstream systems execute or render it.
 - Treat MCP tools as production APIs with schema validation and audit logs.
 - Trace user, agent, model, tool, and outcome with correlation IDs.
-- Add a kill switch for runaway agents or compromised tools.
+- Add an emergency stop for runaway agents or compromised tools.
 
 ## References
 
