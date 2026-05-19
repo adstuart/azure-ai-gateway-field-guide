@@ -2,84 +2,58 @@
 
 Last reviewed: May 2026
 
-This repository is a public field guide for architects who need to govern Microsoft Foundry, Azure API Management (APIM) AI gateway, model router, MCP tools, and web application firewall (WAF) controls in one design.
+One-page field guide for where WAF, Azure API Management (APIM) AI gateway, Microsoft Foundry model router, MCP governance, and OWASP controls fit.
 
-The short version: use APIM as the governed entry point for AI traffic, use model router when you want prompt-aware model selection inside Foundry, keep a WAF for classic web threats, and add AI-specific controls for prompt, response, token, tool, and agent risks.
+This is practitioner guidance, not official Microsoft documentation. Check current Microsoft Learn pages for feature status, regions, tiers, limits, and pricing.
 
-This is not official Microsoft documentation. It is a practitioner guide built from public Microsoft, OWASP, and vendor sources. Always validate service availability, preview status, limits, and pricing in the current product documentation before you design around a feature.
-
-## Architecture
+## The whole model
 
 ```mermaid
-flowchart TD
-    Users[Apps, users, agents] --> Edge[Edge controls<br/>WAF, DDoS, bot protection]
-    Edge --> Gateway[Azure API Management<br/>AI gateway capabilities]
-
-    Gateway --> Safety[AI safety policies<br/>Prompt Shields, content safety,<br/>token limits, semantic cache]
-    Gateway --> Foundry[Microsoft Foundry]
-    Gateway --> MCP[MCP and tool APIs]
-    Gateway --> Other[Other model endpoints<br/>self-hosted or third party]
-
-    Foundry --> Router[Model router<br/>prompt-aware model selection]
-    Router --> Models[Model deployments]
-    Foundry --> Direct[Direct model deployment<br/>when a fixed model is required]
-
-    MCP --> Tools[Business APIs, data, workflows]
-
-    Identity[Microsoft Entra ID<br/>managed identities, OAuth, JWT] -.-> Gateway
-    Identity -.-> MCP
-    Observability[Azure Monitor, Application Insights,<br/>Foundry tracing, Defender] -.-> Gateway
-    Observability -.-> Foundry
-    Observability -.-> MCP
+flowchart LR
+  App[Apps and agents] --> WAF[WAF<br/>public edge]
+  WAF --> APIM[APIM AI gateway<br/>policy control point]
+  APIM --> Foundry[Microsoft Foundry]
+  Foundry --> Router[Model router<br/>prompt-aware model choice]
+  Foundry --> Direct[Direct model deployment]
+  APIM --> MCP[MCP servers and tools]
+  APIM --> Other[Other model APIs]
 ```
 
-## What this guide consolidates
+## Key points
 
-The material in this repository replaces several smaller notes about:
+- **WAF protects the HTTP edge.** Keep it for public endpoints, DDoS, bots, and classic web attacks. Do not treat it as complete AI security.
+- **APIM AI gateway governs AI traffic.** Use it for identity, authorization, token limits, content safety, semantic cache, backend routing, failover, logging, and MCP/tool policy.
+- **Model router is not a gateway.** It is a Foundry model deployment that chooses an eligible underlying model per prompt. It optimizes model choice; it does not replace APIM.
+- **MCP tools are APIs.** Register them, authenticate callers, validate schemas, set quotas, log calls, pin versions, and require approval for high-impact actions.
+- **OWASP controls need layers.** Prompt and agent risks map across Microsoft Entra ID, APIM, Prompt Shields, Purview, Foundry evaluations/tracing, Defender, and human approval.
 
-- APIM AI gateway capabilities.
-- Model router compared with APIM gateway routing.
-- Whether a WAF is enough for AI workloads.
-- MCP gateway and agent tool governance.
-- OWASP LLM and agentic AI risks mapped to Microsoft controls.
+## Decision table
 
-The source material has been deduplicated into one set of public-facing guidance. This repository does not include private source history or bulky video assets.
-
-## Decision summary
-
-| Question | Use this control | Why |
+| Need | Use | Not enough on its own |
 |---|---|---|
-| Do I need one governed entry point for model, agent, and tool traffic? | APIM AI gateway | It centralizes authentication, authorization, token quotas, routing, safety policies, logging, and developer access. |
-| Is the problem "which model should answer this prompt?" | Model router | It is a Foundry model deployment that routes each prompt to an eligible underlying model based on quality, cost, latency, and routing mode. |
-| Is the workload public-facing over HTTP? | WAF plus AI-specific controls | WAF handles classic web threats. It does not understand prompt injection, tool misuse, semantic data leakage, or runaway token spend. |
-| Are agents calling tools through MCP? | APIM as MCP gateway plus API Center registry | Agents need governed access to tools, schema validation, authentication, quotas, monitoring, and approved server discovery. |
-| Are you building autonomous or multi-agent systems? | Layered controls | Use identity, gateway policy, content safety, tool allowlists, tracing, circuit breakers, and human approval for high-impact actions. |
+| Public AI endpoint | WAF + DDoS | WAF cannot understand prompts, model outputs, or tool intent. |
+| Shared AI control point | APIM AI gateway | Gateway policy does not replace app authorization or data governance. |
+| Prompt-aware model choice | Foundry model router | Model router does not provide enterprise gateway governance. |
+| Govern agent tools | APIM as MCP gateway + API Center | Tool discovery without policy invites tool poisoning and misuse. |
+| Stop runaway cost | APIM token limits + budget alerts | Request-rate limits miss high-token prompts and agent loops. |
+| Regulated or fixed-model workload | APIM to direct deployment | Model router may select a different eligible model. |
 
-## Start here
+## Minimum production checklist
 
-1. Read [Reference architecture](docs/architecture.md) for the layered pattern.
-2. Read [APIM AI gateway](docs/apim-ai-gateway.md) for the control point.
-3. Read [Model router vs APIM](docs/model-router-vs-apim.md) for routing responsibilities.
-4. Read [WAF and AI firewalls](docs/waf-and-ai-firewalls.md) if you need to explain why a WAF is necessary but not sufficient.
-5. Read [MCP and tool governance](docs/mcp-tool-governance.md) for agent tool security.
-6. Use the [Implementation checklist](docs/implementation-checklist.md) before a design review.
+- Use Microsoft Entra ID or managed identity where possible.
+- Keep raw model keys out of application code.
+- Enforce token quotas by app, team, user, or agent.
+- Apply Prompt Shields or equivalent checks for direct and indirect prompt injection.
+- Validate model output before downstream systems execute or render it.
+- Treat MCP tools as production APIs with schema validation and audit logs.
+- Trace user, agent, model, tool, and outcome with correlation IDs.
+- Add a kill switch for runaway agents or compromised tools.
 
-## Scope and non-goals
+## References
 
-This repository focuses on architecture and decision guidance. It is not a deployment accelerator, a Terraform module, a Bicep template, or a product support boundary. It does not replace Microsoft Learn, OWASP guidance, your threat model, or your organization's security review.
-
-In this guide, WAF means web application firewall. It does not mean the Azure Well-Architected Framework unless explicitly stated.
-
-## Repository map
-
-| File | Purpose |
-|---|---|
-| [docs/architecture.md](docs/architecture.md) | Layered architecture and traffic flow. |
-| [docs/apim-ai-gateway.md](docs/apim-ai-gateway.md) | APIM AI gateway capabilities and control mapping. |
-| [docs/model-router-vs-apim.md](docs/model-router-vs-apim.md) | Clear distinction between model router and gateway routing. |
-| [docs/waf-and-ai-firewalls.md](docs/waf-and-ai-firewalls.md) | WAF, AI firewall, Prompt Shields, and decision guidance. |
-| [docs/mcp-tool-governance.md](docs/mcp-tool-governance.md) | MCP gateway risks and mitigations. |
-| [docs/owasp-control-map.md](docs/owasp-control-map.md) | OWASP LLM and agentic risks mapped to Microsoft controls. |
-| [docs/implementation-checklist.md](docs/implementation-checklist.md) | Review checklist for production designs. |
-| [docs/source-map.md](docs/source-map.md) | Deduplication map from the original research threads. |
-| [docs/references.md](docs/references.md) | Public references used by the guide. |
+- [AI gateway capabilities in Azure API Management](https://learn.microsoft.com/en-us/azure/api-management/genai-gateway-capabilities)
+- [MCP server support in Azure API Management](https://learn.microsoft.com/en-us/azure/api-management/mcp-server-overview)
+- [Microsoft Foundry model router](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-router)
+- [Azure AI Content Safety Prompt Shields](https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/jailbreak-detection)
+- [OWASP Top 10 for LLM Applications](https://genai.owasp.org/llm-top-10/)
+- [OWASP MCP Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/MCP_Security_Cheat_Sheet.html)
