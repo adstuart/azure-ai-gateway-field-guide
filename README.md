@@ -1,8 +1,8 @@
-# Azure AI gateway field guide
+# Gateways in Microsoft Foundry
 
 Last reviewed: May 2026
 
-Use this guide to choose the right control point for AI traffic on Azure. A web application firewall (WAF), Azure API Management (APIM) AI gateway, Microsoft Foundry model router, Model Context Protocol (MCP) gateway, and Open Worldwide Application Security Project (OWASP) controls solve different problems.
+Use this guide to choose the right gateway control point for AI traffic in and around Microsoft Foundry. A web application firewall (WAF), Azure API Management (APIM) AI gateway, Microsoft Foundry model router, Model Context Protocol (MCP) gateway, and Open Worldwide Application Security Project (OWASP) controls solve different problems.
 
 This guide isn't official Microsoft documentation. Check current Microsoft Learn pages for feature status, regions, tiers, limits, and pricing.
 
